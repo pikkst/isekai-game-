@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@layer components {
+  .bento-card {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(12px);
+  }
+
+  .bento-tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 8px;
+  }
+
+  .stat-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+
+  .stat-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+  }
+
+  .choice-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 14px;
+    border-radius: 12px;
+    text-align: left;
+    cursor: pointer;
+    color: #d1d5db;
+    font-size: 14px;
+    transition: all 0.2s ease;
+  }
+
+  .choice-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(168, 85, 247, 0.5);
+    color: #ffffff;
+  }
+}

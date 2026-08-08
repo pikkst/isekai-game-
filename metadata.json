@@ -1,0 +1,6 @@
+{
+  "name": "Isekai Life RPG",
+  "description": "An interactive AI-powered Isekai RPG game where every choice shapes your destiny and world evolution.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

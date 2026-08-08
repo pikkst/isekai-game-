@@ -1,0 +1,664 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Language,
+  StartGamePayload,
+  CharacterStats,
+  WorldState,
+  InventoryItem,
+  Skill,
+  Companion,
+  Equipment,
+  GameTurnChoice,
+  CombatInfo,
+  TimelineNode,
+  HallOfFameRecord,
+  CheatSkill,
+  StoryMemory,
+} from './types';
+import { CHEAT_SKILLS_PRESETS } from './data/isekaiPresets';
+import { INITIAL_SKILL_TREE } from './data/skillTree';
+import { Header } from './components/Header';
+import { CharacterCreation } from './components/CharacterCreation';
+import { StatusCard } from './components/StatusCard';
+import { StoryViewer } from './components/StoryViewer';
+import { ChoicesPanel } from './components/ChoicesPanel';
+import { TabsDrawer } from './components/TabsDrawer';
+import { GameOverModal } from './components/GameOverModal';
+import { HallOfFameModal } from './components/HallOfFameModal';
+import { soundEngine } from './utils/soundEngine';
+
+export default function App() {
+  const [gameState, setGameState] = useState<'creation' | 'playing'>('creation');
+  const [language, setLanguage] = useState<Language>('et');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Player Stats & State
+  const [stats, setStats] = useState<CharacterStats>({
+    name: 'Arthur',
+    title: 'Newborn Reincarnator',
+    level: 1,
+    exp: 0,
+    maxExp: 100,
+    hp: 120,
+    maxHp: 120,
+    mp: 80,
+    maxMp: 80,
+    str: 10,
+    mag: 10,
+    agi: 10,
+    luk: 10,
+    karma: 0,
+    fatePoints: 3,
+  });
+
+  const [cheatSkill, setCheatSkill] = useState<CheatSkill>(CHEAT_SKILLS_PRESETS[0]);
+  const [world, setWorld] = useState<WorldState>({
+    worldName: 'Aetheria',
+    threatLevel: 10,
+    worldChaosLevel: 5,
+    factionStandings: { 'Royal Capital': 50 },
+    worldEventSummary: 'The world rests in peace, but whispers of the Demon King echo.',
+  });
+
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillTreeNodes, setSkillTreeNodes] = useState<Skill[]>(INITIAL_SKILL_TREE);
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [memoryLogs, setMemoryLogs] = useState<StoryMemory[]>([]);
+  const [equipment, setEquipment] = useState<Equipment>({});
+  const [turnCount, setTurnCount] = useState<number>(0);
+
+  const [lastLocation, setLastLocation] = useState<string>('Unknown Sanctum');
+  const [lastNarrative, setLastNarrative] = useState<string>('');
+  const [choices, setChoices] = useState<GameTurnChoice[]>([]);
+  const [combatInfo, setCombatInfo] = useState<CombatInfo | null>(null);
+  const [timeline, setTimeline] = useState<TimelineNode[]>([]);
+
+  // End Game & Modals
+  const [isGameOver, setIsGameOver] = useState<boolean>(false);
+  const [gameEndType, setGameEndType] = useState<'victory' | 'defeat' | 'ascension' | 'peaceful' | null>(null);
+  const [isHallOfFameOpen, setIsHallOfFameOpen] = useState<boolean>(false);
+  const [hallOfFameRecords, setHallOfFameRecords] = useState<HallOfFameRecord[]>([]);
+
+  // Load Hall of Fame Records from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('isekai_hall_of_fame');
+      if (saved) {
+        setHallOfFameRecords(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn('Failed to parse saved Hall of Fame', e);
+    }
+  }, []);
+
+  const saveToHallOfFame = (record: HallOfFameRecord) => {
+    const updated = [record, ...hallOfFameRecords];
+    setHallOfFameRecords(updated);
+    try {
+      localStorage.setItem('isekai_hall_of_fame', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save to localStorage', e);
+    }
+  };
+
+  const handleClearRecords = () => {
+    setHallOfFameRecords([]);
+    localStorage.removeItem('isekai_hall_of_fame');
+  };
+
+  // Start New Game Session
+  const handleStartGame = async (payload: StartGamePayload) => {
+    setIsLoading(true);
+
+    // Set active cheat skill
+    const foundCheat = CHEAT_SKILLS_PRESETS.find((c) => c.id === payload.cheatSkillId) || {
+      id: 'custom_cheat',
+      name: payload.customCheatPrompt || 'Custom Divine Cheat',
+      description: payload.customCheatPrompt || 'Unfathomable cheat powers.',
+      cooldown: 0,
+      type: 'divine' as const,
+    };
+    setCheatSkill(foundCheat);
+
+    // Initial stats setup
+    const initialCharacterStats: CharacterStats = {
+      name: payload.characterName,
+      title: language === 'et' ? 'Reinkarneerunu' : 'Reincarnated One',
+      level: 1,
+      exp: 0,
+      maxExp: 100,
+      hp: 100 + payload.initialStats.str * 2,
+      maxHp: 100 + payload.initialStats.str * 2,
+      mp: 80 + payload.initialStats.mag * 2,
+      maxMp: 80 + payload.initialStats.mag * 2,
+      str: payload.initialStats.str,
+      mag: payload.initialStats.mag,
+      agi: payload.initialStats.agi,
+      luk: payload.initialStats.luk,
+      karma: 0,
+      fatePoints: 3,
+    };
+    setStats(initialCharacterStats);
+
+    try {
+      const res = await fetch('/api/isekai/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error('API request failed');
+
+      const data = await res.json();
+
+      setLastNarrative(data.narrative);
+      setLastLocation(data.location || 'Runic Sanctum');
+      setChoices(data.choices || []);
+      setCombatInfo(data.combatInfo || null);
+      setTurnCount(1);
+
+      if (data.statChanges) {
+        setStats((prev) => ({ ...prev, ...data.statChanges }));
+      }
+      if (data.worldChanges) {
+        setWorld((prev) => ({ ...prev, ...data.worldChanges }));
+      }
+      if (data.newItems) {
+        const addedItems = data.newItems.map((ni: any) => ni.item);
+        setInventory(addedItems);
+      }
+      if (data.newSkills) {
+        setSkills(data.newSkills);
+      }
+      if (data.partyChanges) {
+        setCompanions(data.partyChanges);
+      }
+      if (data.newMemories) {
+        setMemoryLogs(data.newMemories);
+      } else {
+        setMemoryLogs([
+          {
+            id: 'mem_1',
+            turnNumber: 1,
+            title: 'Reincarnation Awakening',
+            description: `Reborn as ${payload.characterName} with ${foundCheat.name}.`,
+            category: 'secret',
+          },
+        ]);
+      }
+
+      // Add to timeline
+      setTimeline([
+        {
+          turnNumber: 1,
+          location: data.location || 'Runic Sanctum',
+          narrativeSnippet: data.narrative.slice(0, 100) + '...',
+          choiceMade: language === 'et' ? 'Reinkarnatsiooni algus' : 'Reincarnation Begin',
+          karmaAtTurn: 0,
+          statsAtTurn: { level: 1, hp: initialCharacterStats.hp, mp: initialCharacterStats.mp },
+        },
+      ]);
+
+      setGameState('playing');
+      soundEngine.startAmbientAtmosphere(data.audioMood || 'mystic');
+    } catch (err) {
+      console.error('Failed to start game:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Process Turn Action
+  const handleTurnAction = async (choiceId?: string, customText?: string) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    const currentTurn = turnCount + 1;
+    setTurnCount(currentTurn);
+
+    const selectedChoiceObj = choices.find((c) => c.id === choiceId);
+    const choiceText = selectedChoiceObj ? selectedChoiceObj.text : undefined;
+
+    const payload = {
+      choiceId,
+      choiceText,
+      customActionText: customText,
+      language,
+      gameState: {
+        stats,
+        world,
+        inventory,
+        skills,
+        companions,
+        memoryLogs,
+        equipment,
+        turnCount,
+        lastLocation,
+        lastNarrative,
+        cheatSkill,
+      },
+    };
+
+    try {
+      const res = await fetch('/api/isekai/turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error('API request failed');
+
+      const data = await res.json();
+
+      setLastNarrative(data.narrative);
+      if (data.location) setLastLocation(data.location);
+      if (data.choices) setChoices(data.choices);
+      setCombatInfo(data.combatInfo || null);
+
+      // Stat updates
+      if (data.statChanges) {
+        setStats((prev) => {
+          const updated = { ...prev, ...data.statChanges };
+          if (updated.exp >= updated.maxExp) {
+            soundEngine.playLevelUp();
+          }
+          return updated;
+        });
+      }
+
+      // World updates
+      if (data.worldChanges) {
+        setWorld((prev) => ({ ...prev, ...data.worldChanges }));
+      }
+
+      // Inventory updates
+      if (data.newItems) {
+        setInventory((prev) => {
+          let updated = [...prev];
+          data.newItems.forEach((change: any) => {
+            if (change.action === 'add') {
+              const existingIdx = updated.findIndex((i) => i.id === change.item.id);
+              if (existingIdx >= 0) {
+                updated[existingIdx].count += change.item.count;
+              } else {
+                updated.push(change.item);
+              }
+            } else if (change.action === 'remove') {
+              updated = updated.filter((i) => i.id !== change.item.id);
+            }
+          });
+          return updated;
+        });
+      }
+
+      // Skills updates
+      if (data.newSkills) {
+        setSkills((prev) => [...prev, ...data.newSkills]);
+      }
+
+      // Companions updates
+      if (data.partyChanges) {
+        setCompanions(data.partyChanges);
+      }
+
+      // Memory Logs update
+      if (data.newMemories && data.newMemories.length > 0) {
+        setMemoryLogs((prev) => [...data.newMemories, ...prev]);
+      }
+
+      // Timeline Update
+      const selectedChoiceObj = choices.find((c) => c.id === choiceId);
+      const choiceLabel = selectedChoiceObj ? selectedChoiceObj.text : customText || 'Custom Action';
+
+      setTimeline((prev) => [
+        ...prev,
+        {
+          turnNumber: currentTurn,
+          location: data.location || lastLocation,
+          narrativeSnippet: data.narrative.slice(0, 100) + '...',
+          choiceMade: choiceLabel,
+          karmaAtTurn: stats.karma,
+          statsAtTurn: { level: stats.level, hp: stats.hp, mp: stats.mp },
+        },
+      ]);
+
+      // Check for Game Over
+      if (data.isGameOver) {
+        setIsGameOver(true);
+        setGameEndType(data.gameEndType || 'victory');
+
+        // Log record to Hall of Fame
+        const newRecord: HallOfFameRecord = {
+          id: 'rec_' + Date.now(),
+          characterName: stats.name,
+          title: stats.title,
+          worldName: world.worldName,
+          archetype: 'Isekai RPG',
+          endingType: data.gameEndType || 'Victory',
+          turnsSurvived: currentTurn,
+          finalLevel: stats.level,
+          summary: data.narrative.slice(0, 120) + '...',
+          timestamp: new Date().toLocaleDateString(),
+        };
+        saveToHallOfFame(newRecord);
+      }
+    } catch (err) {
+      console.error('Failed to process turn:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Consume Potion from Inventory
+  const handleUseItem = (itemId: string) => {
+    setInventory((prev) => {
+      const idx = prev.findIndex((i) => i.id === itemId);
+      if (idx < 0) return prev;
+
+      const item = prev[idx];
+      if (item.count > 1) {
+        const copy = [...prev];
+        copy[idx] = { ...item, count: item.count - 1 };
+        return copy;
+      }
+      return prev.filter((i) => i.id !== itemId);
+    });
+
+    // Restore HP/MP
+    setStats((prev) => ({
+      ...prev,
+      hp: Math.min(prev.maxHp, prev.hp + 50),
+      mp: Math.min(prev.maxMp, prev.mp + 30),
+    }));
+  };
+
+  // Spend Fate Point to Reroll or Trigger Miracle
+  const handleSpendFatePoint = () => {
+    if (stats.fatePoints <= 0) return;
+    setStats((prev) => ({ ...prev, fatePoints: prev.fatePoints - 1 }));
+    handleTurnAction(
+      undefined,
+      language === 'et'
+        ? 'Kasutan Saatusepunkti et luua jumalik imetegu ja muuta sündmuste käiku!'
+        : 'I spend a Fate Point to invoke a divine miracle and rewrite fate!'
+    );
+  };
+
+  // Allocate Stat Point
+  const handleAllocateStat = (stat: 'str' | 'mag' | 'agi' | 'luk') => {
+    if (!stats.statPoints || stats.statPoints <= 0) return;
+    setStats((prev) => {
+      const remainingPts = (prev.statPoints || 0) - 1;
+      const newVal = (prev[stat] || 10) + 1;
+      let maxHp = prev.maxHp;
+      let maxMp = prev.maxMp;
+      let hp = prev.hp;
+      let mp = prev.mp;
+
+      if (stat === 'str') {
+        maxHp += 5;
+        hp += 5;
+      } else if (stat === 'mag') {
+        maxMp += 5;
+        mp += 5;
+      }
+
+      return {
+        ...prev,
+        [stat]: newVal,
+        statPoints: remainingPts,
+        maxHp,
+        maxMp,
+        hp,
+        mp,
+      };
+    });
+  };
+
+  // Unlock Skill Node in Skill Tree
+  const handleUnlockSkill = (skillId: string) => {
+    const node = skillTreeNodes.find((n) => n.id === skillId);
+    if (!node) return;
+    const currentPts = stats.skillPoints || 0;
+    const cost = node.costPoints || 1;
+    if (currentPts < cost) return;
+
+    setStats((prev) => {
+      const newPts = (prev.skillPoints || 0) - cost;
+      const strBonus = node.statBonus?.str || 0;
+      const magBonus = node.statBonus?.mag || 0;
+      const agiBonus = node.statBonus?.agi || 0;
+      const lukBonus = node.statBonus?.luk || 0;
+
+      return {
+        ...prev,
+        skillPoints: newPts,
+        str: prev.str + strBonus,
+        mag: prev.mag + magBonus,
+        agi: prev.agi + agiBonus,
+        luk: prev.luk + lukBonus,
+        maxHp: prev.maxHp + strBonus * 5,
+        maxMp: prev.maxMp + magBonus * 5,
+        hp: prev.hp + strBonus * 5,
+        mp: prev.mp + magBonus * 5,
+      };
+    });
+
+    setSkills((prev) => {
+      if (prev.some((s) => s.id === skillId)) return prev;
+      return [...prev, { ...node, unlocked: true }];
+    });
+
+    setSkillTreeNodes((prev) =>
+      prev.map((n) => (n.id === skillId ? { ...n, unlocked: true } : n))
+    );
+  };
+
+  // Train & Level Up Companion
+  const handleTrainCompanion = (companionId: string) => {
+    setCompanions((prev) =>
+      prev.map((comp) => {
+        if (comp.id === companionId) {
+          const cLvl = (comp.level || 1) + 1;
+          return {
+            ...comp,
+            level: cLvl,
+            exp: 0,
+            maxExp: Math.floor((comp.maxExp || 100) * 1.4),
+            str: (comp.str || 12) + 3,
+            mag: (comp.mag || 12) + 3,
+            loyalty: Math.min(100, (comp.loyalty || 50) + 10),
+            status: `Trained intensively with ${stats.name}! Reached Level ${cLvl}.`,
+          };
+        }
+        return comp;
+      })
+    );
+  };
+
+  // Give Gift to Companion
+  const handleGiftCompanion = (companionId: string) => {
+    setCompanions((prev) =>
+      prev.map((c) => {
+        if (c.id === companionId) {
+          const newAffection = Math.min(100, (c.affection || 50) + 15);
+          let status = c.romanceStatus || 'Ally';
+          if (newAffection >= 90) status = 'Harem Empress';
+          else if (newAffection >= 75) status = 'Sworn Soulmate';
+          else if (newAffection >= 60) status = 'Beloved';
+          else if (newAffection >= 40) status = 'Close Confidante';
+
+          return {
+            ...c,
+            affection: newAffection,
+            romanceStatus: status as any,
+            status: `Received a precious gift from ${stats.name}! Affection increased to ${newAffection}%.`,
+          };
+        }
+        return c;
+      })
+    );
+
+    setMemoryLogs((prev) => [
+      {
+        id: 'mem_gift_' + Date.now(),
+        turnNumber: turnCount,
+        title: 'Thoughtful Gift Offered',
+        description: `Offered a treasured token of affection to a companion, deepening your harem bond.`,
+        category: 'romance',
+      },
+      ...prev,
+    ]);
+  };
+
+  // Romance & Date Companion
+  const handleRomanceCompanion = (companionId: string) => {
+    const comp = companions.find((c) => c.id === companionId);
+    if (!comp) return;
+
+    setCompanions((prev) =>
+      prev.map((c) => {
+        if (c.id === companionId) {
+          const newAffection = Math.min(100, (c.affection || 50) + 25);
+          let status = 'Beloved';
+          if (newAffection >= 90) status = 'Harem Empress';
+          else if (newAffection >= 75) status = 'Sworn Soulmate';
+
+          return {
+            ...c,
+            affection: newAffection,
+            romanceStatus: status as any,
+            status: `Shared an intimate date & heartfelt confession with ${stats.name}! Bond ascended to ${status}.`,
+          };
+        }
+        return c;
+      })
+    );
+
+    handleTurnAction(
+      undefined,
+      language === 'et'
+        ? `Veedan romantilise hetke oma kaaslasega ${comp.name}, tugevdades meie tundeid ja hingesidet.`
+        : `I spend an intimate romantic date with my beloved companion ${comp.name}, deepening our soulmate bond.`
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col font-sans selection:bg-purple-500/30 selection:text-purple-200">
+      {/* Global Header */}
+      <Header
+        language={language}
+        onLanguageChange={setLanguage}
+        onOpenHallOfFame={() => setIsHallOfFameOpen(true)}
+        onRestartGame={() => {
+          setIsGameOver(false);
+          setGameState('creation');
+        }}
+        isPlaying={gameState === 'playing'}
+      />
+
+      {/* Main Content View */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+        {gameState === 'creation' ? (
+          <CharacterCreation
+            language={language}
+            onStartGame={handleStartGame}
+            isLoading={isLoading}
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            {/* Left Column: Player Vitals & Status Card */}
+            <div className="space-y-6 lg:col-span-1">
+              <StatusCard
+                stats={stats}
+                cheatSkill={cheatSkill}
+                language={language}
+                onUseCheatSkill={() =>
+                  handleTurnAction(
+                    undefined,
+                    language === 'et'
+                      ? `Aktiveerin oma võimsa Cheat-oskuse: ${cheatSkill.name}!`
+                      : `Unleashing my Cheat Skill: ${cheatSkill.name}!`
+                  )
+                }
+                onSpendFatePoint={handleSpendFatePoint}
+                onAllocateStat={handleAllocateStat}
+                isLoading={isLoading}
+              />
+
+              {/* Tabs Drawer (Inventory, Skills, Harem, World, Memories) */}
+              <TabsDrawer
+                stats={stats}
+                equipment={equipment}
+                inventory={inventory}
+                companions={companions}
+                skills={skills}
+                skillTreeNodes={skillTreeNodes}
+                world={world}
+                timeline={timeline}
+                memoryLogs={memoryLogs}
+                onUseItem={handleUseItem}
+                onUnlockSkill={handleUnlockSkill}
+                onTrainCompanion={handleTrainCompanion}
+                onGiftCompanion={handleGiftCompanion}
+                onRomanceCompanion={handleRomanceCompanion}
+              />
+            </div>
+
+            {/* Right Column: Story Display & Choices */}
+            <div className="space-y-6 lg:col-span-2">
+              <StoryViewer
+                narrative={lastNarrative}
+                location={lastLocation}
+                combatInfo={combatInfo}
+                companions={companions}
+                language={language}
+                isLoading={isLoading}
+              />
+
+              <ChoicesPanel
+                choices={choices}
+                language={language}
+                onSelectChoice={(choiceId) => handleTurnAction(choiceId)}
+                onSubmitCustomAction={(customText) => handleTurnAction(undefined, customText)}
+                onRerollChoices={handleSpendFatePoint}
+                fatePoints={stats.fatePoints}
+                isLoading={isLoading}
+              />
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Game Over / Victory Modal */}
+      {isGameOver && (
+        <GameOverModal
+          gameEndType={gameEndType}
+          stats={stats}
+          world={world}
+          turnCount={turnCount}
+          language={language}
+          onRestart={() => {
+            setIsGameOver(false);
+            setGameState('creation');
+          }}
+          onOpenHallOfFame={() => {
+            setIsGameOver(false);
+            setIsHallOfFameOpen(true);
+          }}
+        />
+      )}
+
+      {/* Hall of Fame Leaderboard Modal */}
+      {isHallOfFameOpen && (
+        <HallOfFameModal
+          records={hallOfFameRecords}
+          language={language}
+          onClose={() => setIsHallOfFameOpen(false)}
+          onClearRecords={handleClearRecords}
+        />
+      )}
+    </div>
+  );
+}
