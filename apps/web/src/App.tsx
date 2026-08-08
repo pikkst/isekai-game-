@@ -79,6 +79,7 @@ export default function App() {
   const [gameEndType, setGameEndType] = useState<'victory' | 'defeat' | 'ascension' | 'peaceful' | null>(null);
   const [isHallOfFameOpen, setIsHallOfFameOpen] = useState<boolean>(false);
   const [hallOfFameRecords, setHallOfFameRecords] = useState<HallOfFameRecord[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -138,66 +139,73 @@ export default function App() {
     setStats(initialCharacterStats);
 
     try {
-      const res = await fetch('/api/isekai/start', {
+       const res = await fetch('/api/isekai/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          idempotencyKey: crypto.randomUUID(),
+        }),
       });
 
       if (!res.ok) throw new Error('API request failed');
 
-      const data = await res.json();
+       const data = await res.json();
 
-      setLastNarrative(data.narrative);
-      setLastLocation(data.location || 'Runic Sanctum');
-      setLastImagePrompt(data.imagePrompt || '');
-      setLastSceneImageUrl(data.sceneImageUrl || '');
-      setChoices(data.choices || []);
-      setCombatInfo(data.combatInfo || null);
-      setTurnCount(1);
+       setSessionId(data.sessionId);
 
-      if (data.statChanges) {
-        setStats((prev) => ({ ...prev, ...data.statChanges }));
-      }
-      if (data.worldChanges) {
-        setWorld((prev) => ({ ...prev, ...data.worldChanges }));
-      }
-      if (data.newItems) {
-        setInventory(data.newItems.map((ni: { item: InventoryItem }) => ni.item));
-      }
-      if (data.newSkills) {
-        setSkills(data.newSkills);
-      }
-      if (data.partyChanges) {
-        setCompanions(data.partyChanges);
-      }
-      if (data.newMemories) {
-        setMemoryLogs(data.newMemories);
-      } else {
-        setMemoryLogs([
-          {
-            id: 'mem_1',
-            turnNumber: 1,
-            title: 'Reincarnation Awakening',
-            description: `Reborn as ${payload.characterName} with ${foundCheat.name}.`,
-            category: 'secret',
-          },
-        ]);
-      }
+       const turnResult = data.turnResult || data;
 
-      setTimeline([
-        {
-          turnNumber: 1,
-          location: data.location || 'Runic Sanctum',
-          narrativeSnippet: data.narrative.slice(0, 100) + '...',
-          choiceMade: language === 'et' ? 'Reinkarnatsiooni algus' : 'Reincarnation Begin',
-          karmaAtTurn: 0,
-          statsAtTurn: { level: 1, hp: initialCharacterStats.hp, mp: initialCharacterStats.mp },
-        },
-      ]);
+       setLastNarrative(turnResult.narrative);
+       setLastLocation(turnResult.location || 'Runic Sanctum');
+       setLastImagePrompt(turnResult.imagePrompt || '');
+       setLastSceneImageUrl(turnResult.sceneImageUrl || '');
+       setChoices(turnResult.choices || []);
+       setCombatInfo(turnResult.combatInfo || null);
+       setTurnCount(1);
 
-      setGameState('playing');
-      soundEngine.startAmbientAtmosphere(data.audioMood || 'mystic');
+       if (turnResult.statChanges) {
+         setStats((prev) => ({ ...prev, ...turnResult.statChanges }));
+       }
+       if (turnResult.worldChanges) {
+         setWorld((prev) => ({ ...prev, ...turnResult.worldChanges }));
+       }
+       if (turnResult.newItems) {
+         setInventory(turnResult.newItems.map((ni: { item: InventoryItem }) => ni.item));
+       }
+       if (turnResult.newSkills) {
+         setSkills(turnResult.newSkills);
+       }
+       if (turnResult.partyChanges) {
+         setCompanions(turnResult.partyChanges);
+       }
+       if (turnResult.newMemories) {
+         setMemoryLogs(turnResult.newMemories);
+       } else {
+         setMemoryLogs([
+           {
+             id: 'mem_1',
+             turnNumber: 1,
+             title: 'Reincarnation Awakening',
+             description: `Reborn as ${payload.characterName} with ${foundCheat.name}.`,
+             category: 'secret',
+           },
+         ]);
+       }
+
+       setTimeline([
+         {
+           turnNumber: 1,
+           location: turnResult.location || 'Runic Sanctum',
+           narrativeSnippet: turnResult.narrative.slice(0, 100) + '...',
+           choiceMade: language === 'et' ? 'Reinkarnatsiooni algus' : 'Reincarnation Begin',
+           karmaAtTurn: 0,
+           statsAtTurn: { level: 1, hp: initialCharacterStats.hp, mp: initialCharacterStats.mp },
+         },
+       ]);
+
+       setGameState('playing');
+       soundEngine.startAmbientAtmosphere(turnResult.audioMood || 'mystic');
     } catch (err) {
       console.error('Failed to start game:', err);
     } finally {
@@ -205,8 +213,8 @@ export default function App() {
     }
   };
 
-  const handleTurnAction = async (choiceId?: string, customText?: string) => {
-    if (isLoading) return;
+   const handleTurnAction = async (choiceId?: string, customText?: string) => {
+    if (isLoading || !sessionId) return;
     setIsLoading(true);
 
     const currentTurn = turnCount + 1;
@@ -215,24 +223,19 @@ export default function App() {
     const selectedChoiceObj = choices.find((c) => c.id === choiceId);
     const choiceText = selectedChoiceObj ? selectedChoiceObj.text : undefined;
 
+    let action;
+    if (choiceId && !customText) {
+      action = { type: 'choice' as const, choiceId };
+    } else if (customText) {
+      action = { type: 'custom' as const, text: customText };
+    } else {
+      action = { type: 'reroll' as const };
+    }
+
     const payload = {
-      choiceId,
-      choiceText,
-      customActionText: customText,
-      language,
-      gameState: {
-        stats,
-        world,
-        inventory,
-        skills,
-        companions,
-        memoryLogs,
-        equipment,
-        turnCount,
-        lastLocation,
-        lastNarrative,
-        cheatSkill,
-      },
+      sessionId,
+      idempotencyKey: crypto.randomUUID(),
+      action,
     };
 
     try {
@@ -246,16 +249,18 @@ export default function App() {
 
       const data = await res.json();
 
-      setLastNarrative(data.narrative);
-      if (data.location) setLastLocation(data.location);
-      if (data.imagePrompt) setLastImagePrompt(data.imagePrompt);
-      if (data.sceneImageUrl) setLastSceneImageUrl(data.sceneImageUrl);
-      if (data.choices) setChoices(data.choices);
-      setCombatInfo(data.combatInfo || null);
+      const turnResult = data.turnResult || data;
 
-      if (data.statChanges) {
+      setLastNarrative(turnResult.narrative);
+      if (turnResult.location) setLastLocation(turnResult.location);
+      if (turnResult.imagePrompt) setLastImagePrompt(turnResult.imagePrompt);
+      if (turnResult.sceneImageUrl) setLastSceneImageUrl(turnResult.sceneImageUrl);
+      if (turnResult.choices) setChoices(turnResult.choices);
+      setCombatInfo(turnResult.combatInfo || null);
+
+      if (turnResult.statChanges) {
         setStats((prev) => {
-          const updated = { ...prev, ...data.statChanges };
+          const updated = { ...prev, ...turnResult.statChanges };
           if (updated.exp >= updated.maxExp) {
             soundEngine.playLevelUp();
           }
@@ -263,14 +268,14 @@ export default function App() {
         });
       }
 
-      if (data.worldChanges) {
-        setWorld((prev) => ({ ...prev, ...data.worldChanges }));
+      if (turnResult.worldChanges) {
+        setWorld((prev) => ({ ...prev, ...turnResult.worldChanges }));
       }
 
-      if (data.newItems) {
+      if (turnResult.newItems) {
         setInventory((prev) => {
           let updated = [...prev];
-          data.newItems.forEach((change: { action: string; item: InventoryItem }) => {
+          turnResult.newItems.forEach((change: { action: string; item: InventoryItem }) => {
             if (change.action === 'add') {
               const existingIdx = updated.findIndex((i) => i.id === change.item.id);
               if (existingIdx >= 0) {
@@ -286,16 +291,16 @@ export default function App() {
         });
       }
 
-      if (data.newSkills) {
-        setSkills((prev) => [...prev, ...data.newSkills]);
+      if (turnResult.newSkills) {
+        setSkills((prev) => [...prev, ...turnResult.newSkills]);
       }
 
-      if (data.partyChanges) {
-        setCompanions(data.partyChanges);
+      if (turnResult.partyChanges) {
+        setCompanions(turnResult.partyChanges);
       }
 
-      if (data.newMemories && data.newMemories.length > 0) {
-        setMemoryLogs((prev) => [...data.newMemories, ...prev]);
+      if (turnResult.newMemories && turnResult.newMemories.length > 0) {
+        setMemoryLogs((prev) => [...turnResult.newMemories, ...prev]);
       }
 
       const selectedLabel = selectedChoiceObj ? selectedChoiceObj.text : customText || 'Custom Action';

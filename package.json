@@ -14,7 +14,9 @@
     "build:ai-core": "cd packages/ai-core && npm run build",
     "build:api": "cd apps/api && npm run build",
     "build:web": "cd apps/web && npm run build",
-    "dev": "npm run dev:api & npm run dev:web",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev:api": "cd apps/api && npm run dev",
     "dev:web": "cd apps/web && npm run dev",
     "typecheck": "tsc -b",
@@ -26,6 +28,9 @@
     "clean:web": "cd apps/web && npm run clean"
   },
   "devDependencies": {
-    "typescript": "~5.8.2"
+    "@types/node": "^26.2.0",
+    "concurrently": "^9.2.4",
+    "typescript": "~5.8.2",
+    "vitest": "^4.1.10"
   }
 }

@@ -1,9 +1,65 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import type { AIProvider, AIRequest, AIResponse, AIProviderName } from '../types';
+import type { AISchemaDefinition, AISchemaProperty } from '../schema';
 
 export interface GeminiAdapterDeps {
   apiKey?: string;
   candidateModels?: string[];
+}
+
+function translateSchema(prop: AISchemaProperty): unknown {
+  const result: Record<string, unknown> = {};
+
+  if (prop.description !== undefined) result.description = prop.description;
+  if (prop.enum !== undefined) result.enum = prop.enum;
+
+  const typeMap: Record<string, string> = {
+    object: Type.OBJECT,
+    string: Type.STRING,
+    integer: Type.INTEGER,
+    number: Type.NUMBER,
+    boolean: Type.BOOLEAN,
+    array: Type.ARRAY,
+  };
+
+  if (prop.type && typeMap[prop.type]) {
+    result.type = typeMap[prop.type];
+  }
+
+  if (prop.items !== undefined) {
+    result.items = translateSchema(prop.items);
+  }
+
+  if (prop.properties !== undefined) {
+    const properties: Record<string, unknown> = {};
+    for (const [key, subProp] of Object.entries(prop.properties)) {
+      properties[key] = translateSchema(subProp);
+    }
+    result.properties = properties;
+    if (prop.required) {
+      result.required = prop.required;
+    }
+  }
+
+  return result;
+}
+
+function translateSchemaDefinition(schema: AISchemaDefinition): Record<string, unknown> {
+  const result: Record<string, unknown> = {
+    type: Type.OBJECT,
+  };
+
+  if (schema.description !== undefined) result.description = schema.description;
+  const properties: Record<string, unknown> = {};
+  for (const [key, prop] of Object.entries(schema.properties)) {
+    properties[key] = translateSchema(prop);
+  }
+  result.properties = properties;
+  if (schema.required && schema.required.length > 0) {
+    result.required = schema.required;
+  }
+
+  return result;
 }
 
 export class GeminiAdapter implements AIProvider {
@@ -13,8 +69,8 @@ export class GeminiAdapter implements AIProvider {
   private defaultModels: string[];
 
   constructor(deps?: GeminiAdapterDeps) {
-    this.model = 'gemini-2.0-flash';
-    this.defaultModels = deps?.candidateModels || ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+    this.model = 'gemini-3.6-flash';
+    this.defaultModels = deps?.candidateModels || ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
 
     const apiKey = deps?.apiKey;
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
@@ -44,13 +100,16 @@ export class GeminiAdapter implements AIProvider {
 
     for (const modelName of modelsToTry) {
       try {
+        const schema = request.schema
+          ? translateSchemaDefinition(request.schema as AISchemaDefinition)
+          : undefined;
+
         const response = await this.client.models.generateContent({
           model: modelName,
           contents: request.prompt,
           config: {
             responseMimeType: 'application/json',
-            responseSchema: request.schema,
-            temperature: request.temperature ?? 0.8,
+            responseSchema: schema,
             maxOutputTokens: request.maxTokens,
           },
         });

@@ -47,26 +47,26 @@ export interface AIPromptConfig {
 
 export const GAME_TURN_PROMPT_CONFIG: AIPromptConfig = {
   promptId: 'game_turn_generation',
-  promptVersion: '1.0.0',
-  schemaVersion: '1.0.0',
-  modelName: 'gemini-2.0-flash',
-  temperature: 0.8,
-  maxTokens: 4096,
-  timeoutMs: 30000,
-  fallbackBehavior: 'use_deterministic',
-  candidateModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'],
+   promptVersion: '1.0.0',
+   schemaVersion: '1.0.0',
+   modelName: 'gemini-3.6-flash',
+   temperature: 0.8,
+   maxTokens: 4096,
+   timeoutMs: 30000,
+   fallbackBehavior: 'use_deterministic',
+   candidateModels: ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'],
 };
 
 export const START_GAME_PROMPT_CONFIG: AIPromptConfig = {
   promptId: 'start_game_generation',
   promptVersion: '1.0.0',
   schemaVersion: '1.0.0',
-  modelName: 'gemini-2.0-flash',
+  modelName: 'gemini-3.6-flash',
   temperature: 0.8,
   maxTokens: 4096,
   timeoutMs: 30000,
   fallbackBehavior: 'use_deterministic',
-  candidateModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'],
+  candidateModels: ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'],
 };
 
 export interface PromptContext {
