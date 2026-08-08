@@ -1,0 +1,28 @@
+{
+  "name": "@isekai/ai-core",
+  "version": "0.1.0",
+  "description": "Provider-independent AI orchestration for Isekai Life RPG",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.2"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@isekai/contracts": "file:../../packages/contracts",
+    "@isekai/game-core": "file:../../packages/game-core"
+  }
+}
