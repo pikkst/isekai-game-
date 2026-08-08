@@ -128,6 +128,7 @@ Start here:
 - [AGENTS.md](./AGENTS.md) — rules for coding agents and contributors
 - [TASKS.md](./TASKS.md) — implementation plan and execution order
 - [Product Vision](./docs/PRODUCT_VISION.md)
+- [MVP Scope](./docs/MVP_SCOPE.md)
 - [Game Design](./docs/GAME_DESIGN.md)
 - [Architecture](./docs/ARCHITECTURE.md)
 - [Backend Architecture](./docs/BACKEND.md)
