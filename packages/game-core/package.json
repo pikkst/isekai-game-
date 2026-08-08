@@ -1,0 +1,26 @@
+{
+  "name": "@isekai/game-core",
+  "version": "0.1.0",
+  "description": "Deterministic RPG game rules and mechanics for Isekai Life RPG",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.2"
+  },
+  "dependencies": {
+    "@isekai/contracts": "file:../../packages/contracts"
+  }
+}
